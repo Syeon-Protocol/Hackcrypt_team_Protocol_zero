@@ -4,10 +4,10 @@
   --bg-panel: #0a1120;
   --text-main: #e0e6ed;
   --text-muted: #94a3b8;
-  --accent-primary: #00f2ff; /* Cyan */
-  --accent-secondary: #00ff9d; /* Neon Green */
-  --accent-danger: #ff0055; /* Red */
-  --accent-warn: #ffcc00; /* Yellow */
+  --accent-primary: #00f2ff;
+  --accent-secondary: #00ff9d;
+  --accent-danger: #ff0055;
+  --accent-warn: #ffcc00;
   --border-color: #1e293b;
   --font-mono: "Courier New", Courier, monospace;
   --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica,
@@ -78,6 +78,42 @@ body {
   font-size: 0.7rem;
 }
 
+/* --- LOGIN MODAL --- */
+.modal-overlay {
+  display: none; /* Hidden by default */
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.9);
+  z-index: 1000;
+  align-items: center;
+  justify-content: center;
+}
+.modal-content {
+  background: var(--bg-panel);
+  border: 1px solid var(--accent-primary);
+  padding: 40px;
+  width: 350px;
+  text-align: center;
+  box-shadow: 0 0 30px rgba(0, 242, 255, 0.2);
+}
+.login-input {
+  display: block;
+  width: 100%;
+  background: var(--bg-dark);
+  border: 1px solid var(--border-color);
+  color: var(--text-main);
+  padding: 10px;
+  margin-bottom: 15px;
+  font-family: var(--font-mono);
+}
+.login-input:focus {
+  outline: none;
+  border-color: var(--accent-primary);
+}
+
 /* --- LAYOUT --- */
 header {
   height: 60px;
@@ -110,21 +146,19 @@ header {
 
 .main-container {
   display: grid;
-  grid-template-columns: 250px 1fr 350px; /* Sidebar | Dashboard | Right Panel */
-  grid-template-rows: 1fr 250px; /* Main Area | Bottom Logs */
+  grid-template-columns: 250px 1fr 350px;
+  grid-template-rows: 1fr 250px;
   height: calc(100vh - 60px);
   gap: 1px;
-  background: var(--border-color); /* Acts as grid lines */
+  background: var(--border-color);
 }
 
-/* --- SECTIONS --- */
 .panel {
   background: var(--bg-dark);
   padding: 15px;
   overflow-y: auto;
   position: relative;
 }
-
 .panel-title {
   font-size: 0.85rem;
   text-transform: uppercase;
@@ -177,7 +211,7 @@ header {
   left: 20px;
   display: flex;
   gap: 20px;
-  pointer-events: none; /* Let clicks pass through to 3D */
+  pointer-events: none;
   z-index: 5;
 }
 .stat-card {
@@ -197,7 +231,7 @@ header {
   color: var(--text-muted);
 }
 
-/* RIGHT PANEL (AI & ALERTS) */
+/* RIGHT PANEL */
 .right-panel {
   grid-column: 3;
   grid-row: 1 / span 2;
@@ -210,12 +244,9 @@ header {
 .ai-box,
 .alert-box {
   background: var(--bg-dark);
-  height: 50%;
   display: flex;
   flex-direction: column;
 }
-
-/* AI Terminal */
 #ai-terminal {
   flex: 1;
   padding: 10px;
@@ -235,7 +266,6 @@ header {
   color: var(--accent-primary);
 }
 
-/* Alerts Queue */
 .alert-list {
   flex: 1;
   overflow-y: auto;

@@ -1,17 +1,51 @@
-const cors = require("cors");
-
-app.use(cors());
-app.use(express.json());
+/*
+ * BACKEND SERVER (Node.js + Express + MySQL)
+ * FINAL VERSION
+ */
 
 const express = require("express");
+const cors = require("cors");
+const mysql = require("mysql2/promise");
+
 const app = express();
 const PORT = 3000;
 
+// ================== MYSQL CONNECTION ==================
+const dbConfig = {
+  host: "localhost",
+  user: "root",
+  password: "root", // Make sure this matches your MySQL password
+  database: "cards_db",
+};
+
+let pool;
+
+async function initDB() {
+  try {
+    pool = mysql.createPool(dbConfig);
+    console.log("✅ Connected to MySQL Database");
+  } catch (error) {
+    console.error("❌ MySQL Connection Failed:", error);
+    process.exit(1);
+  }
+}
+
+initDB();
+
+// ================== MIDDLEWARE ==================
+app.use(cors());
 app.use(express.json());
 
-// ================== IN-MEMORY STORAGE ==================
-const logs = []; // normalized SOC logs
-const alerts = []; // active alerts
+// Simple Admin Auth Middleware
+const checkAuth = (req, res, next) => {
+  const authHeader = req.headers["authorization"];
+  // We check for the specific token "Bearer soc-admin"
+  if (authHeader && authHeader === "Bearer soc-admin") {
+    next();
+  } else {
+    res.status(401).json({ message: "Unauthorized: Please Login" });
+  }
+};
 
 // ================== HELPERS ==================
 function formatTime() {
@@ -22,21 +56,12 @@ function getGeo(ip) {
   return ip.startsWith("192.") || ip.startsWith("10.") ? "Internal" : "Russia";
 }
 
-function getSeverity(failCount, successAfterFail) {
-  if (successAfterFail) return "Critical";
-  if (failCount >= 6) return "High";
-  if (failCount >= 3) return "Medium";
-  return "Low";
-}
-
 function calculateRiskScore(failCount, severity, successAfterFail) {
   let score = failCount * 10;
-
   if (severity === "Medium") score += 20;
   if (severity === "High") score += 40;
   if (severity === "Critical") score += 60;
   if (successAfterFail) score += 20;
-
   return Math.min(score, 100);
 }
 
@@ -48,116 +73,123 @@ function generateSummary(ip, failCount, successAfterFail) {
 }
 
 // ================== CORE LOG PROCESSOR ==================
-function processLogin(username, ip, status) {
-  // Normalized SOC log
-  const log = {
-    timestamp: formatTime(),
-    sourceIP: ip,
-    geoLocation: getGeo(ip),
-    eventType: "AUTH",
-    rawMessage:
-      status === "failed"
-        ? "Failed login attempt"
-        : `Login SUCCESS: ${username}`,
-    action: "Investigate",
-    status,
-  };
+async function processLogin(username, ip, status) {
+  const geo = getGeo(ip);
+  const time = formatTime();
 
-  logs.push(log);
+  // 1. Insert Log
+  const insertLogQuery = `INSERT INTO logs (timestamp, sourceIP, username, eventType, status, geoLocation) VALUES (?, ?, ?, 'AUTH', ?, ?)`;
+  await pool.execute(insertLogQuery, [time, ip, username, status, geo]);
 
-  // ---- Detection logic ----
-  const ipLogs = logs.filter((l) => l.sourceIP === ip);
-  const failedLogs = ipLogs.filter((l) => l.status === "failed");
-  const failCount = failedLogs.length;
+  // 2. Check for Alert Logic
+  const [failRows] = await pool.execute(
+    `SELECT COUNT(*) as failCount FROM logs WHERE sourceIP = ? AND status = 'failed'`,
+    [ip]
+  );
+  const failCount = failRows[0].failCount;
 
-  const successAfterFail = ipLogs.some((log, index) => {
-    if (log.status !== "success") return false;
-    const prevFails = ipLogs
-      .slice(0, index)
-      .filter((l) => l.status === "failed").length;
-    return prevFails >= 3;
-  });
+  const [successRows] = await pool.execute(
+    `SELECT * FROM logs WHERE sourceIP = ? AND status = 'success' LIMIT 1`,
+    [ip]
+  );
+  const successAfterFail = failCount >= 3 && successRows.length > 0;
 
   if (failCount >= 3) {
-    const severity = getSeverity(failCount, successAfterFail);
+    let severity = "Low";
+    if (successAfterFail) severity = "Critical";
+    else if (failCount >= 6) severity = "High";
+    else if (failCount >= 3) severity = "Medium";
+
     const riskScore = calculateRiskScore(failCount, severity, successAfterFail);
+    const summary = generateSummary(ip, failCount, successAfterFail);
 
-    let alert = alerts.find((a) => a.ip === ip);
+    const [existingAlerts] = await pool.execute(
+      `SELECT * FROM alerts WHERE ip = ?`,
+      [ip]
+    );
 
-    if (!alert) {
-      alert = {
-        id: alerts.length + 1,
-        ip,
-        severity,
-        riskScore,
-        rule: "Brute Force Detection Rule",
-        reason: `${failCount} failed login attempts from same IP`,
-        timeline: ipLogs,
-        investigation: {
-          country: getGeo(ip),
-          reputation: "Suspicious",
-          blacklisted: "Yes (Simulated)",
-        },
-        summary: generateSummary(ip, failCount, successAfterFail),
-        createdAt: formatTime(),
-      };
-      alerts.push(alert);
+    if (existingAlerts.length === 0) {
+      await pool.execute(
+        `INSERT INTO alerts (ip, severity, riskScore, summary, createdAt) VALUES (?, ?, ?, ?, ?)`,
+        [ip, severity, riskScore, summary, time]
+      );
+      console.log(`🚨 NEW ALERT | ${ip} | ${severity} | Risk ${riskScore}`);
     } else {
-      // Update existing alert
-      alert.severity = severity;
-      alert.riskScore = riskScore;
-      alert.reason = `${failCount} failed login attempts from same IP`;
-      alert.timeline = ipLogs;
-      alert.summary = generateSummary(ip, failCount, successAfterFail);
+      await pool.execute(
+        `UPDATE alerts SET riskScore = ?, summary = ?, severity = ? WHERE ip = ?`,
+        [riskScore, summary, severity, ip]
+      );
     }
-
-    console.log(`🚨 ALERT | ${ip} | ${severity} | Risk ${riskScore}`);
   }
 }
 
 // ================== ROUTES ==================
 
-// Manual login ingestion
-app.post("/login", (req, res) => {
-  const { username, ip, status } = req.body;
-
-  if (!username || !ip || !status) {
-    return res.status(400).json({ message: "Invalid login data" });
+// 1. Auth Route (ONLY used for the Login Page)
+app.post("/login", async (req, res) => {
+  const { username, password } = req.body;
+  if (username === "admin" && password === "admin") {
+    res.json({ token: "soc-admin", message: "Login Successful" });
+  } else {
+    res.status(401).json({ message: "Invalid Credentials" });
   }
+});
 
-  processLogin(username, ip, status);
+// 2. Submit Log Route (Used by the Simulator Buttons)
+// NOTE: I removed 'checkAuth' from here so the simulator works smoothly
+app.post("/submit-log", async (req, res) => {
+  const { username, ip, status } = req.body;
+  if (!username || !ip || !status)
+    return res.status(400).json({ message: "Invalid log data" });
+
+  await processLogin(username, ip, status);
   res.json({ message: "Login event processed" });
 });
 
-// Simulated live attack
-app.post("/simulate", (req, res) => {
+// Simulated live attack (Requires Auth)
+app.post("/simulate", checkAuth, async (req, res) => {
   const ip = "45.33.22.11";
-
-  for (let i = 0; i < 5; i++) {
-    processLogin("admin", ip, "failed");
-  }
-
-  processLogin("admin", ip, "success");
-
+  for (let i = 0; i < 5; i++) await processLogin("admin", ip, "failed");
+  await processLogin("admin", ip, "success");
   res.json({ message: "Simulated attack logs generated" });
 });
 
-// SOC log table
-app.get("/logs", (req, res) => {
-  res.json(logs);
+// SOC log table (Requires Auth)
+app.get("/logs", checkAuth, async (req, res) => {
+  const anonymize = req.query.anonymize === "true";
+  const [rows] = await pool.execute(
+    `SELECT timestamp as time, sourceIP as ip, username, eventType as event, status, geoLocation FROM logs ORDER BY id DESC LIMIT 50`
+  );
+
+  if (anonymize) {
+    const anonymizedRows = rows.map((log) => ({
+      ...log,
+      ip: "192.168.X.X",
+      username: "User_" + Math.floor(Math.random() * 1000),
+      geoLocation: "Hidden",
+    }));
+    res.json(anonymizedRows);
+  } else {
+    res.json(rows);
+  }
 });
 
-// Alerts
-app.get("/alerts", (req, res) => {
-  res.json(alerts);
+// Alerts (Requires Auth)
+app.get("/alerts", checkAuth, async (req, res) => {
+  const [rows] = await pool.execute(`SELECT * FROM alerts ORDER BY id DESC`);
+  res.json(rows);
 });
 
-// Dashboard metrics
-app.get("/dashboard", (req, res) => {
+// Dashboard metrics (Requires Auth)
+app.get("/dashboard", checkAuth, async (req, res) => {
+  const [[logCount]] = await pool.execute(`SELECT COUNT(*) as count FROM logs`);
+  const [[alertCount]] = await pool.execute(
+    `SELECT COUNT(*) as count FROM alerts`
+  );
   res.json({
-    totalLogs: logs.length,
-    totalAlerts: alerts.length,
-    criticalAlerts: alerts.filter((a) => a.severity === "Critical").length,
+    totalLogs: logCount.count,
+    totalAlerts: alertCount.count,
+    criticalAlerts: 0,
   });
 });
 

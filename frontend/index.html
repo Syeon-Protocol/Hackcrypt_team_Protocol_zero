@@ -4,12 +4,8 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>CARDS | Intelligent SOC Platform</title>
-
-    <!-- CSS Link -->
     <link rel="stylesheet" href="style.css" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-
-    <!-- Three.js Library for 3D Map -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   </head>
   <body>
@@ -22,9 +18,6 @@
         <button class="btn" onclick="App.triggerSimulation()" id="simBtn">
           Start Simulation
         </button>
-        <button class="btn btn-danger" onclick="App.triggerSOS()">
-          PANIC MODE
-        </button>
       </div>
     </header>
 
@@ -32,10 +25,24 @@
       <!-- SIDEBAR -->
       <nav class="sidebar panel">
         <div class="panel-title">Navigation</div>
-        <div class="nav-item active">Dashboard</div>
-        <div class="nav-item">Threat Intelligence</div>
-        <div class="nav-item">Incident Response</div>
-        <div class="nav-item">System Settings</div>
+        <div class="nav-item active" onclick="App.switchTab('Dashboard', this)">
+          Dashboard
+        </div>
+        <div
+          class="nav-item"
+          onclick="App.switchTab('Threat Intelligence', this)"
+        >
+          Threat Intelligence
+        </div>
+        <div
+          class="nav-item"
+          onclick="App.switchTab('Incident Response', this)"
+        >
+          Incident Response
+        </div>
+        <div class="nav-item" onclick="App.switchTab('System Settings', this)">
+          System Settings
+        </div>
 
         <div class="panel-title" style="margin-top: 30px">System Health</div>
         <div
@@ -100,8 +107,6 @@
             <div class="stat-label">TOTAL LOGS</div>
           </div>
         </div>
-
-        <!-- SOAR CONSOLE -->
         <div class="soar-console" id="soarConsole">
           <div style="color: var(--accent-primary); margin-bottom: 5px">
             > SOAR PLAYBOOK EXECUTING...
@@ -112,11 +117,11 @@
 
       <!-- RIGHT PANEL -->
       <aside class="right-panel">
-        <!-- JARVIS AI -->
+        <!-- AI -->
         <div class="ai-box panel">
           <div class="panel-title">
-            <span>AI Incident Analyst</span>
-            <span class="mono text-success">ONLINE</span>
+            <span>AI Incident Analyst</span
+            ><span class="mono text-success">ONLINE</span>
           </div>
           <div id="ai-terminal">
             <div class="ai-msg">System initialized.</div>
@@ -125,11 +130,83 @@
           </div>
         </div>
 
-        <!-- ALERT QUEUE -->
+        <!-- SIMULATOR -->
+        <div class="alert-box panel">
+          <div class="panel-title"><span>Simulator (Testing)</span></div>
+          <div
+            style="
+              padding: 10px;
+              display: flex;
+              flex-direction: column;
+              gap: 8px;
+            "
+          >
+            <div style="font-size: 0.75rem; color: var(--text-muted)">
+              Simulate Login Attempts:
+            </div>
+            <div style="display: flex; gap: 5px">
+              <button
+                class="btn btn-sm"
+                onclick="App.simLogin('admin', 'failed')"
+              >
+                + Fail
+              </button>
+              <button
+                class="btn btn-sm"
+                style="
+                  border-color: var(--accent-secondary);
+                  color: var(--accent-secondary);
+                "
+                onclick="App.simLogin('admin', 'success')"
+              >
+                + Success
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- DATA & REPORTS -->
+        <div class="alert-box panel">
+          <div class="panel-title"><span>Security & Reports</span></div>
+          <div
+            style="
+              padding: 10px;
+              display: flex;
+              flex-direction: column;
+              gap: 10px;
+            "
+          >
+            <div
+              style="
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+              "
+            >
+              <span style="font-size: 0.8rem">Data Anonymization</span>
+              <button
+                class="btn btn-sm"
+                id="privacyBtn"
+                onclick="App.togglePrivacy()"
+              >
+                OFF
+              </button>
+            </div>
+            <button
+              class="btn btn-sm"
+              style="width: 100%"
+              onclick="App.exportReport()"
+            >
+              📄 Download Incident Report
+            </button>
+          </div>
+        </div>
+
+        <!-- ALERTS -->
         <div class="alert-box panel">
           <div class="panel-title">
-            <span>Active Alerts</span>
-            <button class="btn btn-sm" onclick="App.clearAlerts()">
+            <span>Active Alerts</span
+            ><button class="btn btn-sm" onclick="App.clearAlerts()">
               Clear
             </button>
           </div>
@@ -162,21 +239,17 @@
                 <th style="width: 100px">Action</th>
               </tr>
             </thead>
-            <tbody id="logTableBody">
-              <!-- Logs injected here -->
-            </tbody>
+            <tbody id="logTableBody"></tbody>
           </table>
         </div>
       </section>
     </div>
 
-    <!-- --- JAVASCRIPT LOGIC --- -->
     <script>
-      /*
-       * ====================================================================
-       * AUDIO CONTROLLER
-       * ====================================================================
-       */
+      const API_BASE = "http://localhost:3000";
+      let authToken = "Bearer demo-token"; // AUTHENTICATION BYPASSED
+      let isPrivacyMode = false;
+
       class AudioController {
         constructor() {
           this.ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -202,40 +275,29 @@
         }
         playAlert() {
           this.playTone(400, "square", 0.3, 0.1);
-          setTimeout(() => this.playTone(300, "sawtooth", 0.4, 0.1), 150);
         }
         playSuccess() {
           this.playTone(600, "sine", 0.1, 0.05);
-          setTimeout(() => this.playTone(1200, "sine", 0.3, 0.05), 100);
+        }
+        playSoar() {
+          this.playTone(1000, "triangle", 0.2, 0.05);
         }
       }
 
-      /*
-       * ====================================================================
-       * 3D MAP VISUALIZATION (Three.js)
-       * ====================================================================
-       */
-      /*
-       * ====================================================================
-       * 3D MAP VISUALIZATION (Three.js) - WITH FALCON
-       * ====================================================================
-       */
       class Map3D {
         constructor() {
           this.container = document.getElementById("threatMap");
           this.scene = new THREE.Scene();
           this.scene.fog = new THREE.FogExp2(0x000000, 0.002);
-
           this.camera = new THREE.PerspectiveCamera(
             75,
             this.container.clientWidth / this.container.clientHeight,
             0.1,
             1000
           );
-          this.camera.position.z = 45; // Zoomed out slightly to see the Falcon
+          this.camera.position.z = 45;
           this.camera.position.y = 15;
           this.camera.lookAt(0, 0, 0);
-
           this.renderer = new THREE.WebGLRenderer({
             alpha: true,
             antialias: true,
@@ -246,19 +308,15 @@
           );
           this.renderer.setPixelRatio(window.devicePixelRatio);
           this.container.appendChild(this.renderer.domElement);
-
           this.projectiles = [];
-          this.falconGroup = null; // Will hold our falcon mesh
-
+          this.falconGroup = null;
           this.initGrid();
-          this.initFalcon(); // Initialize the Falcon
+          this.initFalcon();
           this.animate();
-
           window.addEventListener("resize", () => this.onResize());
         }
 
         initGrid() {
-          // Create wireframe globe
           const geometry = new THREE.IcosahedronGeometry(12, 2);
           const material = new THREE.MeshBasicMaterial({
             color: 0x00f2ff,
@@ -268,20 +326,15 @@
           });
           this.globe = new THREE.Mesh(geometry, material);
           this.scene.add(this.globe);
-
-          // Inner core
           const coreGeo = new THREE.IcosahedronGeometry(9, 1);
           const coreMat = new THREE.MeshBasicMaterial({ color: 0x050a14 });
           const core = new THREE.Mesh(coreGeo, coreMat);
           this.scene.add(core);
-
-          // Ambient particles
           const particlesGeo = new THREE.BufferGeometry();
           const particleCount = 500;
           const posArray = new Float32Array(particleCount * 3);
-          for (let i = 0; i < particleCount * 3; i++) {
+          for (let i = 0; i < particleCount * 3; i++)
             posArray[i] = (Math.random() - 0.5) * 60;
-          }
           particlesGeo.setAttribute(
             "position",
             new THREE.BufferAttribute(posArray, 3)
@@ -296,46 +349,23 @@
           this.scene.add(this.starField);
         }
 
-        // --- NEW: FALCON CREATION ---
         initFalcon() {
           this.falconGroup = new THREE.Group();
-
-          // Cyber Orange/Gold Material
           const falconMat = new THREE.MeshBasicMaterial({
             color: 0xffaa00,
             wireframe: true,
             transparent: true,
             opacity: 0.8,
           });
-
-          // 1. Body (Aerodynamic Cone)
           const bodyGeo = new THREE.ConeGeometry(0.5, 2, 4);
           const body = new THREE.Mesh(bodyGeo, falconMat);
           body.rotation.x = Math.PI / 2;
-          body.rotation.z = -Math.PI / 2; // Point forward
+          body.rotation.z = -Math.PI / 2;
           this.falconGroup.add(body);
-
-          // 2. Wings (Deltoid Shape)
           const wingGeo = new THREE.BufferGeometry();
           const vertices = new Float32Array([
-            0,
-            0,
-            0, // Root
-            -2.5,
-            0,
-            1, // Tip Left
-            -2.5,
-            0,
-            -0.5, // Back Left
-            0,
-            0,
-            0, // Root
-            2.5,
-            0,
-            1, // Tip Right
-            2.5,
-            0,
-            -0.5, // Back Right
+            0, 0, 0, -2.5, 0, 1, -2.5, 0, -0.5, 0, 0, 0, 2.5, 0, 1, 2.5, 0,
+            -0.5,
           ]);
           wingGeo.setAttribute(
             "position",
@@ -343,15 +373,11 @@
           );
           const wings = new THREE.Mesh(wingGeo, falconMat);
           this.falconGroup.add(wings);
-
-          // 3. Engine Glow
           const engineGeo = new THREE.SphereGeometry(0.2, 8, 8);
           const engineMat = new THREE.MeshBasicMaterial({ color: 0xffaa00 });
           const engine = new THREE.Mesh(engineGeo, engineMat);
-          engine.position.x = -1; // Back of bird
+          engine.position.x = -1;
           this.falconGroup.add(engine);
-
-          // 4. Scanner Beam (Visual touch)
           const beamGeo = new THREE.ConeGeometry(1, 5, 8, 1, true);
           const beamMat = new THREE.MeshBasicMaterial({
             color: 0xffaa00,
@@ -361,33 +387,26 @@
           });
           const beam = new THREE.Mesh(beamGeo, beamMat);
           beam.rotation.x = Math.PI / 2;
-          beam.position.x = 2.5; // Front of bird
+          beam.position.x = 2.5;
           this.falconGroup.add(beam);
-
           this.scene.add(this.falconGroup);
         }
 
         triggerAttack() {
-          // Red projectile
           const geometry = new THREE.SphereGeometry(0.5, 8, 8);
           const material = new THREE.MeshBasicMaterial({ color: 0xff0055 });
           const projectile = new THREE.Mesh(geometry, material);
-
           const theta = Math.random() * Math.PI * 2;
           const phi = Math.acos(Math.random() * 2 - 1);
           const radius = 40;
-
           projectile.position.x = radius * Math.sin(phi) * Math.cos(theta);
           projectile.position.y = radius * Math.sin(phi) * Math.sin(theta);
           projectile.position.z = radius * Math.cos(phi);
-
           this.scene.add(projectile);
           this.projectiles.push({
             mesh: projectile,
             target: new THREE.Vector3(0, 0, 0),
           });
-
-          // Flash Globe
           this.globe.material.color.setHex(0xff0055);
           this.globe.material.opacity = 0.5;
           setTimeout(() => {
@@ -398,28 +417,16 @@
 
         animate() {
           requestAnimationFrame(() => this.animate());
-
-          // Rotate Globe & Stars
           this.globe.rotation.y += 0.002;
           this.starField.rotation.y -= 0.0005;
-
-          // --- FALCON ANIMATION ---
           if (this.falconGroup) {
             const time = Date.now() * 0.0005;
-            const radius = 22; // Orbit radius
-
-            // Circular Orbit
+            const radius = 22;
             this.falconGroup.position.x = Math.cos(time) * radius;
             this.falconGroup.position.z = Math.sin(time) * radius;
-
-            // Gentle Bobbing (Altitude)
             this.falconGroup.position.y = Math.sin(time * 2) * 3 + 5;
-
-            // Always face the center (Scanning)
             this.falconGroup.lookAt(0, 0, 0);
           }
-
-          // Animate Projectiles
           for (let i = this.projectiles.length - 1; i >= 0; i--) {
             const p = this.projectiles[i];
             const direction = new THREE.Vector3()
@@ -431,7 +438,6 @@
               this.projectiles.splice(i, 1);
             }
           }
-
           this.renderer.render(this.scene, this.camera);
         }
 
@@ -446,25 +452,25 @@
         }
       }
 
-      /*
-       * ====================================================================
-       * FRONTEND UI & API INTEGRATION
-       * ====================================================================
-       */
-      const API_BASE = "http://localhost:3000";
-
       class FrontendApp {
         constructor() {
           this.audio = new AudioController();
           this.map3d = new Map3D();
           this.lastAlertCount = 0;
 
-          // Start polling for data
+          // START IMMEDIATELY - NO LOGIN REQUIRED
           this.startPolling();
         }
 
+        switchTab(tabName, el) {
+          document
+            .querySelectorAll(".nav-item")
+            .forEach((item) => item.classList.remove("active"));
+          el.classList.add("active");
+          this.writeAI(`Navigated to ${tabName}`);
+        }
+
         startPolling() {
-          // Check dashboard stats, logs, and alerts every 1 second
           setInterval(async () => {
             await this.updateDashboard();
             await this.updateLogs();
@@ -476,11 +482,8 @@
           try {
             const res = await fetch(`${API_BASE}/dashboard`);
             const data = await res.json();
-
             document.getElementById("totalLogs").innerText = data.totalLogs;
             document.getElementById("attackCount").innerText = data.totalAlerts;
-
-            // If alerts increased significantly, trigger sound/visuals
             if (
               data.totalAlerts > this.lastAlertCount &&
               data.totalAlerts > 0
@@ -489,13 +492,12 @@
               this.audio.playAlert();
             }
             this.lastAlertCount = data.totalAlerts;
-
             document.getElementById("backendStatus").innerText = "● Connected";
             document.getElementById("backendStatus").className =
               "mono text-success";
           } catch (error) {
             document.getElementById("backendStatus").innerText =
-              "● Disconnected (Backend not running)";
+              "● Disconnected";
             document.getElementById("backendStatus").className =
               "mono text-danger";
           }
@@ -503,11 +505,13 @@
 
         async updateLogs() {
           try {
-            const res = await fetch(`${API_BASE}/logs`);
+            const res = await fetch(
+              `${API_BASE}/logs?anonymize=${isPrivacyMode}`
+            );
             const logs = await res.json();
             this.renderLogs(logs);
           } catch (e) {
-            console.error("Logs error", e);
+            console.error(e);
           }
         }
 
@@ -517,7 +521,22 @@
             const alerts = await res.json();
             this.renderAlerts(alerts);
           } catch (e) {
-            console.error("Alerts error", e);
+            console.error(e);
+          }
+        }
+
+        async simLogin(user, status) {
+          this.audio.playClick();
+          const ip = "192.168.1.55";
+          try {
+            await fetch(`${API_BASE}/submit-log`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ username: user, ip: ip, status: status }),
+            });
+            this.updateLogs();
+          } catch (e) {
+            this.writeAI("Simulation Failed");
           }
         }
 
@@ -525,109 +544,105 @@
           this.audio.playClick();
           this.writeAI("Initializing Simulation Sequence...");
           try {
-            const res = await fetch(`${API_BASE}/simulate`, { method: "POST" });
+            const res = await fetch(`${API_BASE}/simulate`, {
+              method: "POST",
+            });
             const data = await res.json();
             this.writeAI("Backend Simulation Triggered: " + data.message);
-            // Force a quick refresh
             this.updateLogs();
           } catch (error) {
-            this.writeAI(
-              "ERROR: Could not contact backend. Is server.js running?"
-            );
+            this.writeAI("ERROR: Could not contact backend.");
             this.audio.playAlert();
           }
         }
 
+        togglePrivacy() {
+          isPrivacyMode = !isPrivacyMode;
+          const btn = document.getElementById("privacyBtn");
+          if (isPrivacyMode) {
+            btn.innerText = "ON";
+            btn.style.background = "var(--accent-secondary)";
+            btn.style.color = "#000";
+            this.writeAI("Privacy Mode ENABLED: Logs anonymized.");
+          } else {
+            btn.innerText = "OFF";
+            btn.style.background = "";
+            btn.style.color = "";
+            this.writeAI("Privacy Mode DISABLED: Real data shown.");
+          }
+          this.updateLogs();
+        }
+
+        exportReport() {
+          this.audio.playClick();
+          this.writeAI("Generating Incident Report...");
+          setTimeout(() => {
+            const content =
+              "SOC INCIDENT REPORT\n====================\nGenerated: " +
+              new Date().toLocaleString() +
+              "\nTotal Alerts: " +
+              document.getElementById("attackCount").innerText +
+              "\n\nNOTE: This is a generated JSON summary of current alert state.";
+            const blob = new Blob([content], { type: "text/plain" });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `SOC_Report_${Date.now()}.txt`;
+            a.click();
+            this.writeAI("Report Downloaded successfully.");
+          }, 1000);
+        }
+
         renderLogs(logs) {
           const tbody = document.getElementById("logTableBody");
-          // Only render the last 20 logs for performance
           const recentLogs = logs.slice(-20).reverse();
-
           tbody.innerHTML = recentLogs
             .map(
               (log) => `
-                    <tr>
-                        <td>${new Date(log.time).toLocaleTimeString()}</td>
-                        <td class="text-info">${log.ip}</td>
-                        <td>${log.username}</td>
-                        <td>${log.event}</td>
-                        <td><span class="${
-                          log.status === "success"
-                            ? "text-success"
-                            : "text-danger"
-                        }">${log.status.toUpperCase()}</span></td>
-                        <td><button class="btn btn-sm" onclick="App.enrich('${
-                          log.ip
-                        }')">Investigate</button></td>
-                    </tr>
-                `
+            <tr>
+              <td>${log.time}</td>
+              <td class="text-info">${log.ip}</td>
+              <td>${log.username}</td>
+              <td>${log.event}</td>
+              <td><span class="${
+                log.status === "success" ? "text-success" : "text-danger"
+              }">${log.status.toUpperCase()}</span></td>
+              <td><button class="btn btn-sm" onclick="App.enrich('${
+                log.ip
+              }')">Investigate</button></td>
+            </tr>
+          `
             )
             .join("");
         }
 
         renderAlerts(alerts) {
           const container = document.getElementById("alertList");
-
-          // Only update if content actually changed to avoid flickering
-          // (Simple hash check could be better, but this suffices for demo)
-          if (
-            container.childElementCount === alerts.length + 1 &&
-            alerts.length > 0
-          )
-            return;
-
           if (alerts.length === 0) {
             container.innerHTML =
               '<div style="text-align:center; padding: 20px; color: var(--text-muted);">No active threats.</div>';
             return;
           }
-
           container.innerHTML = alerts
             .map(
               (alert) => `
-                    <div class="alert-item ${alert.severity}">
-                        <div class="alert-header">
-                            <span>BRUTE FORCE DETECTED</span>
-                            <span class="${
-                              alert.severity === "Critical"
-                                ? "text-danger"
-                                : "text-warn"
-                            }">SCORE: ${alert.riskScore}</span>
-                        </div>
-                        <div class="alert-meta">
-                            <span>IP: ${alert.ip}</span>
-                            <span>${alert.investigation.country}</span>
-                        </div>
-                        <div class="alert-details" style="margin-top:5px; color: #ff6b6b;">
-                            Rep: ${
-                              alert.investigation.reputation
-                            } | Blacklisted: ${alert.investigation.blacklisted}
-                        </div>
-                        <div style="margin-top:8px; font-size:0.75rem; font-style:italic; color:#aaa;">
-                            "${alert.summary}"
-                        </div>
-                        <button class="btn btn-sm btn-danger" style="margin-top:8px; width:100%" onclick="App.runSOAR('${
-                          alert.ip
-                        }')">Auto-Remediate</button>
-                    </div>
-                `
+            <div class="alert-item ${alert.severity}">
+              <div class="alert-header"><span>BRUTE FORCE DETECTED</span><span class="${
+                alert.severity === "Critical" ? "text-danger" : "text-warn"
+              }">SCORE: ${alert.riskScore}</span></div>
+              <div class="alert-meta"><span>IP: ${alert.ip}</span></div>
+              <div style="margin-top:8px; font-size:0.75rem; font-style:italic; color:#aaa;">"${
+                alert.summary
+              }"</div>
+              <button class="btn btn-sm btn-danger" style="margin-top:8px; width:100%" onclick="App.runSOAR('${
+                alert.ip
+              }')">Auto-Remediate</button>
+            </div>
+          `
             )
             .join("");
-
-          // If there is a new alert, put its summary in the AI Terminal
-          if (alerts.length > 0) {
-            const latestAlert = alerts[0];
-            this.writeAI(`[ANALYSIS] ${latestAlert.summary}`);
-          }
-        }
-
-        writeAI(text) {
-          const term = document.getElementById("ai-terminal");
-          const msgDiv = document.createElement("div");
-          msgDiv.className = "ai-msg";
-          msgDiv.innerText = text;
-          term.appendChild(msgDiv);
-          term.scrollTop = term.scrollHeight;
+          if (alerts.length > 0)
+            this.writeAI(`[ANALYSIS] ${alerts[0].summary}`);
         }
 
         enrich(ip) {
@@ -635,7 +650,6 @@
           const btn = event.target;
           btn.innerText = "Checking...";
           btn.disabled = true;
-          // Mocking enrichment since backend doesn't have a specific /enrich endpoint for IP
           setTimeout(() => {
             btn.innerText = "Malicious";
             btn.style.borderColor = "var(--accent-danger)";
@@ -675,25 +689,21 @@
 
         clearAlerts() {
           this.audio.playClick();
-          // Note: Your backend doesn't have a "clear alerts" endpoint, so we just clear frontend visual
           document.getElementById("alertList").innerHTML =
             '<div style="text-align:center; padding: 20px; color: var(--text-muted);">No active threats.</div>';
           this.writeAI("Alerts manually acknowledged.");
-          // To fully clear backend, you would need to add a DELETE endpoint to server.js
         }
 
-        triggerSOS() {
-          this.audio.playAlert();
-          document.body.style.background = "#300";
-          setTimeout(
-            () => (document.body.style.background = "var(--bg-dark)"),
-            200
-          );
-          this.writeAI("PANIC MODE ACTIVE. All external ports closed.");
+        writeAI(text) {
+          const term = document.getElementById("ai-terminal");
+          const msgDiv = document.createElement("div");
+          msgDiv.className = "ai-msg";
+          msgDiv.innerText = text;
+          term.appendChild(msgDiv);
+          term.scrollTop = term.scrollHeight;
         }
       }
 
-      // Initialize App
       const App = new FrontendApp();
     </script>
   </body>
